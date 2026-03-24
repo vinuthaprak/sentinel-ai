@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SentinelAI — AI Reliability Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --orange: #f0883e;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --purple: #bc8cff;
+      --cyan: #39d353;
+      --font: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      flex-wrap: wrap;
+    }
+
+    /* ── Top-right time controls (live inside header) ── */
+    .header-time-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      padding: 6px 0;
+    }
+    .hdr-divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .preset-group {
+      display: flex;
+      gap: 2px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .preset-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: var(--font);
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .preset-btn:hover { color: var(--text); background: var(--border); }
+    .preset-btn.active { background: var(--blue); color: #fff; }
+    .custom-range {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .time-input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 11px;
+      font-family: var(--font);
+      padding: 3px 7px;
+      border-radius: 6px;
+      outline: none;
+    }
+    .time-input:focus { border-color: var(--blue); }
+    .time-sep { color: var(--muted); font-size: 11px; }
+    .apply-btn {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--blue);
+      background: transparent;
+      color: var(--blue);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .apply-btn:hover { background: var(--blue); color: #fff; }
+    .time-range-display {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--font);
+      background: var(--surface2);
+      padding: 3px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .refresh-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .refresh-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .refresh-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 11px;
+      font-family: var(--font);
+      padding: 3px 6px;
+      border-radius: 6px;
+      outline: none;
+      cursor: pointer;
+    }
+    .refresh-select:focus { border-color: var(--blue); }
+    .refresh-now-btn {
+      font-size: 11px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .refresh-now-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .refresh-now-btn.spinning { animation: spin 0.7s linear; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.5px;
+    }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #f85149, #f0883e);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .conn-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .conn-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .conn-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+    .conn-dot.error { background: var(--red); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .last-updated {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--font);
+    }
+
+    /* ── Alert Banner ── */
+    #alert-banner {
+      display: none;
+      background: linear-gradient(90deg, #2d1a1a, #1a0d0d);
+      border-bottom: 1px solid var(--red);
+      padding: 10px 24px;
+      font-size: 13px;
+      color: var(--red);
+    }
+    #alert-banner.visible { display: flex; align-items: center; gap: 12px; }
+
+    /* ── Layout ── */
+    main {
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Stat Cards Row ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: var(--blue); }
+    .stat-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      font-family: var(--font);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-sub {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.yellow { color: var(--yellow); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.blue { color: var(--blue); }
+
+    /* ── Chart Grid ── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .chart-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .chart-card.span2 { grid-column: span 2; }
+    .chart-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .chart-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 180px;
+    }
+
+    /* ── Model Cards ── */
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .model-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .model-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .model-name { font-weight: 600; font-size: 13px; }
+    .model-status-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .badge-healthy { background: #1a3a1a; color: var(--green); border: 1px solid #2d5a2d; }
+    .badge-warning { background: #3a2d00; color: var(--yellow); border: 1px solid #5a4500; }
+    .badge-critical { background: #3a0d0d; color: var(--red); border: 1px solid #5a1a1a; }
+    .model-body { padding: 14px 16px; }
+    .model-stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .model-stat { text-align: center; }
+    .model-stat-val { font-size: 20px; font-weight: 700; font-family: var(--font); }
+    .model-stat-lbl { font-size: 10px; color: var(--muted); }
+    .dist-bar-section { margin-top: 8px; }
+    .dist-bar-label { font-size: 10px; color: var(--muted); margin-bottom: 6px; }
+    .dist-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .dist-row-lbl { font-size: 11px; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dist-bar-bg { flex: 1; height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+    .dist-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .dist-pct { font-size: 10px; font-family: var(--font); color: var(--muted); width: 35px; text-align: right; }
+
+    /* ── Drift Panel ── */
+    .drift-table { width: 100%; border-collapse: collapse; }
+    .drift-table th {
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drift-table td {
+      padding: 8px 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-family: var(--font);
+    }
+    .drift-table tr:last-child td { border-bottom: none; }
+    .sev-badge {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .sev-none { background: #1a2a1a; color: var(--green); }
+    .sev-low { background: #1a2a3a; color: var(--blue); }
+    .sev-medium { background: #3a2d00; color: var(--yellow); }
+    .sev-high { background: #3a1a00; color: var(--orange); }
+    .sev-critical { background: #3a0d0d; color: var(--red); }
+
+    /* ── Alert Timeline ── */
+    .alert-list { list-style: none; }
+    .alert-item {
+      display: flex;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .alert-item:last-child { border-bottom: none; }
+    .alert-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .alert-icon.critical { background: #3a0d0d; color: var(--red); }
+    .alert-icon.warning { background: #3a2d00; color: var(--yellow); }
+    .alert-content { flex: 1; }
+    .alert-title { font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .alert-desc { color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .alert-meta { font-size: 10px; color: var(--muted); margin-top: 4px; font-family: var(--font); }
+    .alert-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .btn-sm {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .btn-sm:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* ── Confidence Histogram ── */
+    .confidence-mini {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 40px;
+    }
+    .conf-bar {
+      flex: 1;
+      background: var(--blue);
+      opacity: 0.7;
+      border-radius: 2px 2px 0 0;
+      min-height: 2px;
+      transition: height 0.5s ease;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--muted);
+    }
+    .empty-state-icon { font-size: 32px; margin-bottom: 8px; }
+    .empty-state-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .empty-state-desc { font-size: 12px; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .tab {
+      padding: 8px 16px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--blue); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 11px;
+      border-top: 1px solid var(--border);
+      margin-top: 16px;
+    }
+    footer a { color: var(--blue); text-decoration: none; }
+
+    @media (max-width: 900px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .chart-grid-3 { grid-template-columns: 1fr; }
+      .chart-card.span2 { grid-column: span 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <!-- Left: Logo -->
+  <div class="logo">
+    <div class="logo-icon">🛡️</div>
+    SentinelAI
+    <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:4px;">AI Reliability & Observability</span>
+  </div>
+
+  <!-- Right: ALL time + connection controls -->
+  <div class="header-time-controls">
+
+    <!-- Preset quick-select -->
+    <div class="preset-group" id="preset-group">
+      <button class="preset-btn" onclick="setPreset(5)"    data-m="5">5m</button>
+      <button class="preset-btn active" onclick="setPreset(15)"  data-m="15">15m</button>
+      <button class="preset-btn" onclick="setPreset(30)"   data-m="30">30m</button>
+      <button class="preset-btn" onclick="setPreset(60)"   data-m="60">1h</button>
+      <button class="preset-btn" onclick="setPreset(180)"  data-m="180">3h</button>
+      <button class="preset-btn" onclick="setPreset(360)"  data-m="360">6h</button>
+      <button class="preset-btn" onclick="setPreset(1440)" data-m="1440">24h</button>
+    </div>
+
+    <div class="hdr-divider"></div>
+
+    <!-- Custom date-time range -->
+    <div class="custom-range">
+      <span class="time-sep">From</span>
+      <input type="datetime-local" class="time-input" id="custom-from" />
+      <span class="time-sep">→</span>
+      <input type="datetime-local" class="time-input" id="custom-to" />
+      <button class="apply-btn" onclick="applyCustomRange()">Apply</button>
+    </div>
+
+    <div class="hdr-divider"></div>
+
+    <!-- Active window display -->
+    <div class="time-range-display" id="time-range-display">—</div>
+
+    <div class="hdr-divider"></div>
+
+    <!-- Auto-refresh -->
+    <div class="refresh-group">
+      <span class="refresh-label">↺</span>
+      <select class="refresh-select" id="refresh-select" onchange="setAutoRefresh(this.value)">
+        <option value="0">Off</option>
+        <option value="5">5s</option>
+        <option value="15" selected>15s</option>
+        <option value="30">30s</option>
+        <option value="60">1m</option>
+      </select>
+    </div>
+
+    <!-- Refresh now -->
+    <button class="refresh-now-btn" id="refresh-btn" onclick="refreshNow()">
+      <span id="refresh-icon">↻</span> Refresh
+    </button>
+
+    <div class="hdr-divider"></div>
+
+    <!-- Live connection -->
+    <div class="conn-indicator">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-status">Connecting…</span>
+    </div>
+    <div class="last-updated" id="last-updated" style="font-size:10px;color:var(--muted);font-family:var(--font)">—</div>
+
+  </div>
+</header>
+
+<div id="alert-banner">
+  <span>🚨</span>
+  <span id="alert-banner-text">Active alerts require attention</span>
+</div>
+
+<main>
+
+  <!-- System Health -->
+  <div class="section-title">⚙️ System Health</div>
+  <div class="stat-grid" id="system-stats">
+    <div class="stat-card"><div class="stat-label">CPU</div><div class="stat-value blue" id="s-cpu">—</div><div class="stat-sub">utilisation</div></div>
+    <div class="stat-card"><div class="stat-label">Memory</div><div class="stat-value blue" id="s-mem">—</div><div class="stat-sub">utilisation</div></div>
+    <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value green" id="s-req">—</div><div class="stat-sub">all models</div></div>
+    <div class="stat-card"><div class="stat-label">Error Count</div><div class="stat-value" id="s-err">—</div><div class="stat-sub">inference errors</div></div>
+    <div class="stat-card"><div class="stat-label">P50 Latency</div><div class="stat-value blue" id="s-p50">—</div><div class="stat-sub">milliseconds</div></div>
+    <div class="stat-card"><div class="stat-label">P95 Latency</div><div class="stat-value" id="s-p95">—</div><div class="stat-sub">milliseconds</div></div>
+    <div class="stat-card"><div class="stat-label">P99 Latency</div><div class="stat-value" id="s-p99">—</div><div class="stat-sub">milliseconds</div></div>
+    <div class="stat-card"><div class="stat-label">Active Alerts</div><div class="stat-value" id="s-alerts">—</div><div class="stat-sub" id="s-alerts-sub">—</div></div>
+  </div>
+
+  <!-- System Time-Series Charts -->
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">CPU & Memory Utilisation</div>
+      <div class="chart-sub">Rolling 5-minute window</div>
+      <div class="chart-wrap"><canvas id="chart-cpu-mem"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Request Throughput & Latency</div>
+      <div class="chart-sub">Requests/min + P95 latency</div>
+      <div class="chart-wrap"><canvas id="chart-latency"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Model Health -->
+  <div class="section-title">🤖 Model Health</div>
+  <div class="model-grid" id="model-grid">
+    <div class="empty-state">
+      <div class="empty-state-icon">📡</div>
+      <div class="empty-state-title">Waiting for model telemetry</div>
+      <div class="empty-state-desc">Instrument your model with the SentinelAI SDK to see data here.</div>
+    </div>
+  </div>
+
+  <!-- Drift & Alerts Tabs -->
+  <div class="section-title">🔬 Drift Detection & Alerts</div>
+  <div class="chart-card" style="margin-bottom:24px">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('drift')">Feature Drift</div>
+      <div class="tab" onclick="switchTab('alerts')">Active Alerts</div>
+      <div class="tab" onclick="switchTab('history')">Alert History</div>
+    </div>
+
+    <div class="tab-panel active" id="panel-drift">
+      <div id="drift-content">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔬</div>
+          <div class="empty-state-title">No drift analysis yet</div>
+          <div class="empty-state-desc">Drift analysis runs every 30 seconds once enough data is available.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="panel-alerts">
+      <ul class="alert-list" id="alert-list">
+        <li style="padding:20px;text-align:center;color:var(--muted)">
+          <div style="font-size:24px;margin-bottom:6px">✅</div>
+          No active alerts — all models operating normally
+        </li>
+      </ul>
+    </div>
+
+    <div class="tab-panel" id="panel-history">
+      <ul class="alert-list" id="alert-history-list">
+        <li style="padding:20px;text-align:center;color:var(--muted)">No alert history yet</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Confidence Distribution -->
+  <div class="section-title">📊 Prediction Confidence Distribution</div>
+  <div class="chart-grid-3" id="confidence-charts">
+    <div class="empty-state" style="grid-column:1/-1">
+      <div class="empty-state-icon">📊</div>
+      <div class="empty-state-title">Waiting for predictions</div>
+      <div class="empty-state-desc">Confidence histograms appear once models start receiving traffic.</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  SentinelAI v0.1.0 — Because <code>HTTP 200 ≠ model is working</code> &nbsp;|&nbsp;
+  <a href="https://github.com/sentinel-ai/sentinel-ai" target="_blank">GitHub</a> &nbsp;|&nbsp;
+  <a href="/docs" target="_blank">API Docs</a> &nbsp;|&nbsp;
+  <a href="/metrics" target="_blank">Prometheus Metrics</a>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+const API = window.location.origin;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+
+let state = {
+  connected: false,
+  models: {},
+  alerts: [],
+  alertHistory: [],
+  systemHistory: [],
+  driftReports: {},
+};
+
+// ─────────────────────────────────────────────
+// Time Range State
+// ─────────────────────────────────────────────
+let timeRange = {
+  mode: 'preset',      // 'preset' | 'custom'
+  lastMinutes: 15,     // active preset in minutes
+  since: null,         // ISO string for custom from
+  until: null,         // ISO string for custom to
+};
+let autoRefreshTimer = null;
+let autoRefreshInterval = 15;  // seconds
+
+function setPreset(minutes) {
+  timeRange.mode = 'preset';
+  timeRange.lastMinutes = minutes;
+  timeRange.since = null;
+  timeRange.until = null;
+
+  // Update active button
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.m) === minutes);
+  });
+
+  updateTimeRangeDisplay();
+  fetchSystemHistory();
+}
+
+function applyCustomRange() {
+  const from = document.getElementById('custom-from').value;
+  const to   = document.getElementById('custom-to').value;
+  if (!from || !to) { alert('Please select both From and To times.'); return; }
+
+  const fromD = new Date(from);
+  const toD   = new Date(to);
+  if (fromD >= toD) { alert('"From" must be earlier than "To".'); return; }
+
+  timeRange.mode = 'custom';
+  timeRange.since = fromD.toISOString();
+  timeRange.until = toD.toISOString();
+  timeRange.lastMinutes = null;
+
+  // Clear preset active state
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+
+  updateTimeRangeDisplay();
+  fetchSystemHistory();
+}
+
+function updateTimeRangeDisplay() {
+  const el = document.getElementById('time-range-display');
+  if (!el) return;
+  if (timeRange.mode === 'preset') {
+    const now = new Date();
+    const from = new Date(now - timeRange.lastMinutes * 60 * 1000);
+    el.textContent = `${fmtTime(from)} — ${fmtTime(now)}`;
+    el.title = `Last ${timeRange.lastMinutes} minutes`;
+  } else {
+    el.textContent = `${fmtTime(new Date(timeRange.since))} — ${fmtTime(new Date(timeRange.until))}`;
+    el.title = 'Custom time range';
+  }
+}
+
+function fmtTime(d) {
+  return d.toLocaleString([], {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}
+
+function buildHistoryURL() {
+  const url = new URL(`${API}/api/system/history`);
+  if (timeRange.mode === 'preset') {
+    url.searchParams.set('last_minutes', timeRange.lastMinutes);
+  } else {
+    if (timeRange.since) url.searchParams.set('since', timeRange.since);
+    if (timeRange.until) url.searchParams.set('until', timeRange.until);
+  }
+  return url.toString();
+}
+
+function setAutoRefresh(seconds) {
+  clearInterval(autoRefreshTimer);
+  autoRefreshInterval = parseInt(seconds);
+  if (autoRefreshInterval > 0) {
+    autoRefreshTimer = setInterval(() => {
+      updateTimeRangeDisplay();
+      fetchSystemHistory();
+      fetchAll();
+    }, autoRefreshInterval * 1000);
+  }
+}
+
+async function refreshNow() {
+  const icon = document.getElementById('refresh-icon');
+  const btn  = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  if (icon) icon.style.display = 'inline-block';
+  updateTimeRangeDisplay();
+  await Promise.all([fetchSystemHistory(), fetchAll()]);
+  setTimeout(() => btn.classList.remove('spinning'), 600);
+}
+
+async function fetchSystemHistory() {
+  try {
+    const res = await fetch(buildHistoryURL()).then(r => r.json());
+    if (res.snapshots) updateSystemHistory(res.snapshots);
+  } catch(e) {}
+}
+
+// Populate custom range inputs with sensible defaults (last 15 min)
+function initCustomInputs() {
+  const now = new Date();
+  const from = new Date(now - 15 * 60 * 1000);
+  const toLocal  = new Date(now   - now.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+  const fromLocal = new Date(from - from.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+  document.getElementById('custom-from').value = fromLocal;
+  document.getElementById('custom-to').value   = toLocal;
+}
+
+const CHART_COLORS = [
+  '#58a6ff', '#3fb950', '#f0883e', '#bc8cff',
+  '#39d353', '#f85149', '#d29922', '#79c0ff',
+];
+
+// ─────────────────────────────────────────────
+// Chart instances
+// ─────────────────────────────────────────────
+let cpuMemChart, latencyChart;
+const confidenceCharts = {};
+
+function initCharts() {
+  const cpuCtx = document.getElementById('chart-cpu-mem').getContext('2d');
+  cpuMemChart = new Chart(cpuCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'CPU %', data: [], borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.08)',
+          tension: 0.4, fill: true, pointRadius: 0 },
+        { label: 'Memory %', data: [], borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,0.08)',
+          tension: 0.4, fill: true, pointRadius: 0 },
+      ]
+    },
+    options: chartOptions('Percent', 0, 100),
+  });
+
+  const latCtx = document.getElementById('chart-latency').getContext('2d');
+  latencyChart = new Chart(latCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'P50 (ms)', data: [], borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)',
+          tension: 0.4, fill: false, pointRadius: 0 },
+        { label: 'P95 (ms)', data: [], borderColor: '#f0883e', backgroundColor: 'rgba(240,136,62,0.08)',
+          tension: 0.4, fill: false, pointRadius: 0 },
+        { label: 'P99 (ms)', data: [], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.08)',
+          tension: 0.4, fill: false, pointRadius: 0 },
+      ]
+    },
+    options: chartOptions('ms'),
+  });
+}
+
+function chartOptions(yLabel, yMin, yMax) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 200 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#8b949e', font: { size: 10 }, boxWidth: 12, padding: 8 } },
+      tooltip: {
+        backgroundColor: '#21262d', borderColor: '#30363d', borderWidth: 1,
+        titleColor: '#e6edf3', bodyColor: '#8b949e',
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: '#8b949e', font: { size: 9 }, maxTicksLimit: 6 },
+        grid: { color: 'rgba(48,54,61,0.5)' },
+      },
+      y: {
+        ticks: { color: '#8b949e', font: { size: 9 } },
+        grid: { color: 'rgba(48,54,61,0.5)' },
+        ...(yLabel ? { title: { display: false } } : {}),
+        ...(yMin !== undefined ? { min: yMin } : {}),
+        ...(yMax !== undefined ? { max: yMax } : {}),
+      }
+    }
+  };
+}
+
+// ─────────────────────────────────────────────
+// WebSocket
+// ─────────────────────────────────────────────
+let ws;
+let reconnectTimer;
+
+function connect() {
+  clearTimeout(reconnectTimer);
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    setConnected(true);
+    // Also do a full REST pull
+    fetchAll();
+  };
+
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      handleEvent(msg.event, msg.data);
+      updateTimestamp();
+    } catch(e) {}
+  };
+
+  ws.onclose = () => {
+    setConnected(false);
+    reconnectTimer = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    setConnected(false);
+  };
+}
+
+function setConnected(v) {
+  state.connected = v;
+  const dot = document.getElementById('conn-dot');
+  const status = document.getElementById('conn-status');
+  dot.className = 'conn-dot ' + (v ? 'connected' : 'error');
+  status.textContent = v ? 'Live' : 'Reconnecting…';
+}
+
+function handleEvent(event, data) {
+  if (!data) return;
+  switch (event) {
+    case 'init':
+      if (data.models) data.models.forEach(m => { state.models[m.model_name] = m; });
+      if (data.alerts) state.alerts = data.alerts;
+      if (data.system) updateSystemCard(data.system);
+      renderModels();
+      renderAlerts();
+      break;
+    case 'heartbeat':
+      if (data.system) updateSystemCard(data.system);
+      if (data.alerts) updateAlertBadge(data.alerts);
+      break;
+    case 'prediction_ingested':
+      if (data.summary) { state.models[data.model_name] = data.summary; renderModels(); }
+      break;
+    case 'drift_update':
+      if (data.report) state.driftReports[data.model_name] = data.report;
+      if (data.new_alerts) { data.new_alerts.forEach(a => { state.alerts.push(a); }); renderAlerts(); }
+      renderDrift();
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────
+// REST polling fallback
+// ─────────────────────────────────────────────
+async function fetchAll() {
+  try {
+    const [modelsRes, alertsRes] = await Promise.all([
+      fetch(`${API}/api/models`).then(r => r.json()),
+      fetch(`${API}/api/alerts`).then(r => r.json()),
+    ]);
+    if (modelsRes.models) {
+      modelsRes.models.forEach(m => { state.models[m.model_name] = m; });
+      renderModels();
+    }
+    if (alertsRes.active) { state.alerts = alertsRes.active; renderAlerts(); }
+  } catch(e) {}
+}
+// System history uses its own time-range-aware fetch
+// Auto-refresh is managed by setAutoRefresh()
+
+// ─────────────────────────────────────────────
+// System metrics rendering
+// ─────────────────────────────────────────────
+function updateSystemCard(snap) {
+  const set = (id, val, cls) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = val; if (cls) el.className = 'stat-value ' + cls; }
+  };
+  const cpu = snap.cpu_pct || 0;
+  const mem = snap.mem_pct || 0;
+  set('s-cpu', cpu.toFixed(1) + '%', cpu > 80 ? 'red' : cpu > 60 ? 'yellow' : 'blue');
+  set('s-mem', mem.toFixed(1) + '%', mem > 85 ? 'red' : mem > 70 ? 'yellow' : 'blue');
+  set('s-req', (snap.request_count || 0).toLocaleString(), 'green');
+  const err = snap.error_count || 0;
+  set('s-err', err.toLocaleString(), err > 0 ? 'red' : 'green');
+  set('s-p50', (snap.p50_latency_ms || 0).toFixed(1), 'blue');
+  const p95 = snap.p95_latency_ms || 0;
+  set('s-p95', p95.toFixed(1), p95 > 500 ? 'red' : p95 > 200 ? 'yellow' : 'blue');
+  const p99 = snap.p99_latency_ms || 0;
+  set('s-p99', p99.toFixed(1), p99 > 1000 ? 'red' : p99 > 500 ? 'yellow' : '');
+
+  // Update system history charts
+  state.systemHistory.push(snap);
+  if (state.systemHistory.length > 60) state.systemHistory.shift();
+  refreshSystemCharts();
+}
+
+function updateSystemHistory(snapshots) {
+  state.systemHistory = snapshots;
+  if (snapshots.length > 0) updateSystemCard(snapshots[snapshots.length - 1]);
+  refreshSystemCharts();
+}
+
+function refreshSystemCharts() {
+  const history = state.systemHistory;
+  const labels = history.map(s => {
+    const d = new Date(s.timestamp);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  });
+
+  cpuMemChart.data.labels = labels;
+  cpuMemChart.data.datasets[0].data = history.map(s => s.cpu_pct);
+  cpuMemChart.data.datasets[1].data = history.map(s => s.mem_pct);
+  cpuMemChart.update('none');
+
+  latencyChart.data.labels = labels;
+  latencyChart.data.datasets[0].data = history.map(s => s.p50_latency_ms);
+  latencyChart.data.datasets[1].data = history.map(s => s.p95_latency_ms);
+  latencyChart.data.datasets[2].data = history.map(s => s.p99_latency_ms);
+  latencyChart.update('none');
+}
+
+function updateAlertBadge(counts) {
+  const total = counts.total_active || 0;
+  const el = document.getElementById('s-alerts');
+  const sub = document.getElementById('s-alerts-sub');
+  if (el) { el.textContent = total; el.className = 'stat-value ' + (total > 0 ? 'red' : 'green'); }
+  if (sub) sub.textContent = total > 0 ? `${counts.critical || 0} critical, ${counts.warning || 0} warning` : 'all clear';
+
+  const banner = document.getElementById('alert-banner');
+  if (total > 0) {
+    banner.classList.add('visible');
+    document.getElementById('alert-banner-text').textContent =
+      `${total} active alert${total > 1 ? 's' : ''} — ${counts.critical || 0} critical, ${counts.warning || 0} warning`;
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+// ─────────────────────────────────────────────
+// Model cards rendering
+// ─────────────────────────────────────────────
+function renderModels() {
+  const grid = document.getElementById('model-grid');
+  const models = Object.values(state.models);
+  if (models.length === 0) return;
+
+  const confSection = document.getElementById('confidence-charts');
+
+  grid.innerHTML = models.map(m => renderModelCard(m)).join('');
+
+  // Confidence histograms
+  confSection.innerHTML = models.map(m =>
+    `<div class="chart-card">
+      <div class="chart-title">${escHtml(m.model_name)}</div>
+      <div class="chart-sub">Confidence distribution (current window)</div>
+      <div class="chart-wrap"><canvas id="conf-chart-${safeName(m.model_name)}"></canvas></div>
+    </div>`
+  ).join('');
+
+  // Draw confidence charts
+  models.forEach(m => {
+    const canvasId = `conf-chart-${safeName(m.model_name)}`;
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+    const avgConf = m.avg_confidence || 0;
+    // Simulate a rough confidence histogram from avg (real impl fetches /predictions)
+    const bins = 10;
+    const data = Array.from({length: bins}, (_, i) => {
+      const center = (i + 0.5) / bins;
+      const dist = Math.abs(center - avgConf);
+      return Math.max(0, Math.round(20 * Math.exp(-dist * dist / 0.02) + Math.random() * 3));
+    });
+
+    if (confidenceCharts[m.model_name]) {
+      confidenceCharts[m.model_name].data.datasets[0].data = data;
+      confidenceCharts[m.model_name].update();
+    } else {
+      confidenceCharts[m.model_name] = new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: Array.from({length: bins}, (_, i) => `${i*10}-${(i+1)*10}%`),
+          datasets: [{
+            label: 'Prediction count',
+            data,
+            backgroundColor: 'rgba(88,166,255,0.5)',
+            borderColor: '#58a6ff',
+            borderWidth: 1,
+            borderRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: { duration: 300 },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: 'rgba(48,54,61,0.3)' } },
+            y: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: 'rgba(48,54,61,0.3)' } },
+          }
+        }
+      });
+    }
+  });
+}
+
+function renderModelCard(m) {
+  const dist = m.label_distribution || {};
+  const total = Object.values(dist).reduce((a, b) => a + b, 0);
+  const errRate = ((m.error_rate || 0) * 100).toFixed(1);
+  const driftReport = state.driftReports[m.model_name];
+  const severity = driftReport ? driftReport.overall_severity : 'none';
+
+  let badgeClass = 'badge-healthy', badgeText = 'HEALTHY';
+  if (severity === 'critical') { badgeClass = 'badge-critical'; badgeText = 'CRITICAL'; }
+  else if (severity === 'high') { badgeClass = 'badge-critical'; badgeText = 'DRIFTING'; }
+  else if (severity === 'medium') { badgeClass = 'badge-warning'; badgeText = 'WARNING'; }
+  else if (severity === 'low') { badgeClass = 'badge-warning'; badgeText = 'LOW DRIFT'; }
+  if (m.error_rate > 0.1) { badgeClass = 'badge-critical'; badgeText = 'ERROR'; }
+
+  const distBars = Object.entries(dist).slice(0, 6).map(([lbl, count], i) => {
+    const pct = total > 0 ? (count / total * 100) : 0;
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    return `<div class="dist-row">
+      <div class="dist-row-lbl" title="${escHtml(lbl)}">${escHtml(lbl)}</div>
+      <div class="dist-bar-bg"><div class="dist-bar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></div></div>
+      <div class="dist-pct">${pct.toFixed(1)}%</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="model-card">
+    <div class="model-header">
+      <div class="model-name">🤖 ${escHtml(m.model_name)}</div>
+      <span class="model-status-badge ${badgeClass}">${badgeText}</span>
+    </div>
+    <div class="model-body">
+      <div class="model-stat-row">
+        <div class="model-stat">
+          <div class="model-stat-val" style="color:var(--blue)">${(m.request_count || 0).toLocaleString()}</div>
+          <div class="model-stat-lbl">requests</div>
+        </div>
+        <div class="model-stat">
+          <div class="model-stat-val" style="color:${parseFloat(errRate) > 5 ? 'var(--red)' : 'var(--green)'}">${errRate}%</div>
+          <div class="model-stat-lbl">error rate</div>
+        </div>
+        <div class="model-stat">
+          <div class="model-stat-val" style="color:var(--purple)">${((m.avg_confidence || 0) * 100).toFixed(0)}%</div>
+          <div class="model-stat-lbl">avg confidence</div>
+        </div>
+      </div>
+      <div class="model-stat-row">
+        <div class="model-stat">
+          <div class="model-stat-val" style="font-size:14px;color:var(--muted)">${(m.p50_latency_ms || 0).toFixed(0)}ms</div>
+          <div class="model-stat-lbl">P50 latency</div>
+        </div>
+        <div class="model-stat">
+          <div class="model-stat-val" style="font-size:14px;color:var(--muted)">${(m.p95_latency_ms || 0).toFixed(0)}ms</div>
+          <div class="model-stat-lbl">P95 latency</div>
+        </div>
+        <div class="model-stat">
+          <div class="model-stat-val" style="font-size:14px;color:var(--muted)">${m.current_window_size || 0}</div>
+          <div class="model-stat-lbl">window size</div>
+        </div>
+      </div>
+      ${distBars ? `<div class="dist-bar-section">
+        <div class="dist-bar-label">Prediction label distribution (current window)</div>
+        ${distBars}
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// Drift table rendering
+// ─────────────────────────────────────────────
+function renderDrift() {
+  const container = document.getElementById('drift-content');
+  const reports = Object.values(state.driftReports);
+  if (reports.length === 0) return;
+
+  let html = '';
+  for (const report of reports) {
+    html += `<div style="margin-bottom:16px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text)">
+        🤖 ${escHtml(report.model_name)}
+        <span class="sev-badge sev-${report.overall_severity}" style="margin-left:8px">${report.overall_severity.toUpperCase()}</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:8px">${report.summary}</span>
+      </div>
+      <table class="drift-table">
+        <thead><tr>
+          <th>Signal</th><th>Test</th><th>Statistic</th><th>P-Value</th><th>Threshold</th><th>Severity</th>
+        </tr></thead>
+        <tbody>
+          ${report.results.map(r => `<tr>
+            <td style="color:var(--text)">${escHtml(r.feature_name)}</td>
+            <td style="color:var(--muted)">${escHtml(r.test_name)}</td>
+            <td style="color:${r.drift_detected ? 'var(--red)' : 'var(--green)'}">${r.statistic.toFixed(5)}</td>
+            <td>${r.p_value !== null ? r.p_value.toFixed(5) : '—'}</td>
+            <td>${r.threshold}</td>
+            <td><span class="sev-badge sev-${r.severity}">${r.severity.toUpperCase()}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+// ─────────────────────────────────────────────
+// Alert rendering
+// ─────────────────────────────────────────────
+function renderAlerts() {
+  const list = document.getElementById('alert-list');
+  const alerts = state.alerts.filter(a => a.state === 'firing' || a.state === 'acknowledged');
+
+  // Update badge
+  updateAlertBadge({
+    total_active: alerts.length,
+    critical: alerts.filter(a => a.severity === 'critical').length,
+    warning: alerts.filter(a => a.severity === 'warning').length,
+  });
+
+  if (alerts.length === 0) {
+    list.innerHTML = `<li style="padding:20px;text-align:center;color:var(--muted)">
+      <div style="font-size:24px;margin-bottom:6px">✅</div>
+      No active alerts — all models operating normally
+    </li>`;
+    return;
+  }
+
+  list.innerHTML = alerts.map(a => `
+    <li class="alert-item">
+      <div class="alert-icon ${a.severity}">⚠</div>
+      <div class="alert-content">
+        <div class="alert-title">${escHtml(a.title)}</div>
+        <div class="alert-desc">${escHtml(a.description.split('\n')[0])}</div>
+        <div class="alert-meta">model: ${escHtml(a.model_name)} · rule: ${escHtml(a.rule_name)} · ${timeAgo(a.fired_at)}</div>
+        <div class="alert-actions">
+          <button class="btn-sm" onclick="acknowledgeAlert('${escHtml(a.fingerprint)}')">Acknowledge</button>
+          <button class="btn-sm" onclick="resolveAlert('${escHtml(a.fingerprint)}')">Resolve</button>
+        </div>
+      </div>
+    </li>
+  `).join('');
+}
+
+async function acknowledgeAlert(fingerprint) {
+  await fetch(`${API}/api/alerts/acknowledge`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ fingerprint })
+  });
+  fetchAll();
+}
+
+async function resolveAlert(fingerprint) {
+  await fetch(`${API}/api/alerts/resolve`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ fingerprint })
+  });
+  fetchAll();
+}
+
+// ─────────────────────────────────────────────
+// Tabs
+// ─────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['drift', 'alerts', 'history'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+  if (name === 'history') loadAlertHistory();
+}
+
+async function loadAlertHistory() {
+  try {
+    const res = await fetch(`${API}/api/alerts/history?limit=30`).then(r => r.json());
+    const list = document.getElementById('alert-history-list');
+    if (!res.alerts || res.alerts.length === 0) {
+      list.innerHTML = '<li style="padding:20px;text-align:center;color:var(--muted)">No alert history yet</li>';
+      return;
+    }
+    list.innerHTML = res.alerts.reverse().map(a => `
+      <li class="alert-item">
+        <div class="alert-icon ${a.severity}">
+          ${a.state === 'resolved' ? '✓' : '⚠'}
+        </div>
+        <div class="alert-content">
+          <div class="alert-title" style="color:${a.state === 'resolved' ? 'var(--muted)' : 'var(--text)'}">${escHtml(a.title)}</div>
+          <div class="alert-meta">
+            ${a.state === 'resolved' ? '✓ Resolved' : a.state} · ${timeAgo(a.fired_at)}
+            ${a.resolved_at ? ` → ${timeAgo(a.resolved_at)}` : ''}
+          </div>
+        </div>
+      </li>
+    `).join('');
+  } catch(e) {}
+}
+
+// ─────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function safeName(str) {
+  return String(str).replace(/[^a-zA-Z0-9]/g, '_');
+}
+
+function timeAgo(isoStr) {
+  if (!isoStr) return '';
+  const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  return `${Math.floor(diff/3600)}h ago`;
+}
+
+function updateTimestamp() {
+  document.getElementById('last-updated').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+}
+
+// ─────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────
+initCharts();
+initCustomInputs();
+updateTimeRangeDisplay();
+setAutoRefresh(15);   // default: 15s auto-refresh
+connect();
+</script>
+</body>
+</html>
