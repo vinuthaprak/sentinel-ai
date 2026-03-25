@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-config
+  namespace: sentinel-ai
+  labels:
+    app.kubernetes.io/name: sentinel-ai
+    app.kubernetes.io/component: server
+data:
+  SENTINEL_LOG_LEVEL: "INFO"
+  SENTINEL_HOST: "0.0.0.0"
+  SENTINEL_PORT: "8765"
+  # Drift analysis interval (seconds)
+  SENTINEL_DRIFT_INTERVAL: "30"
+  # Reference window size (number of prediction records)
+  SENTINEL_REFERENCE_SIZE: "1000"
+  # Current window size compared against reference
+  SENTINEL_CURRENT_SIZE: "200"

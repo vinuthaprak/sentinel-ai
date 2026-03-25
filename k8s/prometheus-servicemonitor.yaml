@@ -1,0 +1,21 @@
+# Prometheus Operator ServiceMonitor — automatically scrapes /metrics
+# Requires prometheus-operator CRD. Skip if using plain Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sentinel-ai
+  namespace: sentinel-ai
+  labels:
+    app.kubernetes.io/name: sentinel-ai
+    # Match this label to your Prometheus Operator's serviceMonitorSelector
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sentinel-ai
+      app.kubernetes.io/component: server
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

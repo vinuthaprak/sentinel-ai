@@ -306,6 +306,142 @@ alert_manager.register_rule(my_rule)
 
 ---
 
+---
+
+## Kubernetes Deployment
+
+Production-style manifests live in `k8s/`. Deploy in order:
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/hpa.yaml
+# Optional — requires prometheus-operator
+kubectl apply -f k8s/prometheus-servicemonitor.yaml
+```
+
+What's included:
+
+| File | What it does |
+|---|---|
+| `namespace.yaml` | Isolated `sentinel-ai` namespace |
+| `configmap.yaml` | Externalised config (log level, window sizes) |
+| `deployment.yaml` | 2 replicas, rolling update (maxUnavailable=0), liveness + readiness + startup probes, resource limits, non-root security context, topology spread |
+| `service.yaml` | ClusterIP (in-cluster SDK traffic) + NodePort (dashboard access) |
+| `hpa.yaml` | Scales 2→6 replicas on CPU/memory — handles burst prediction ingest |
+| `prometheus-servicemonitor.yaml` | Auto-scrapes `/metrics` via Prometheus Operator |
+
+### Readiness / Liveness probes
+
+The Deployment uses all three Kubernetes probe types on `/health`:
+
+```
+startupProbe   → 60s budget for cold start
+readinessProbe → removed from LB until healthy (no 503s during rollout)
+livenessProbe  → restart container if server hangs
+```
+
+This gives zero-downtime rolling deploys with `maxUnavailable: 0`.
+
+---
+
+## SLOs (Service Level Objectives)
+
+SentinelAI tracks AI-specific SLOs that go beyond traditional infra SLOs.
+
+```
+GET /api/slos
+```
+
+```json
+{
+  "overall_status": "breached",
+  "total": 5,
+  "ok": 3,
+  "warning": 1,
+  "breached": 1,
+  "slos": [
+    {
+      "name": "inference_p99_latency_ms",
+      "target": 200.0,
+      "current_value": 143.2,
+      "status": "ok",
+      "compliance_pct": 100.0
+    },
+    {
+      "name": "prediction_jsd_drift",
+      "target": 0.1,
+      "current_value": 0.42,
+      "status": "breached",
+      "compliance_pct": 23.8
+    },
+    {
+      "name": "avg_confidence",
+      "target": 0.65,
+      "current_value": 0.31,
+      "status": "breached",
+      "compliance_pct": 47.7
+    }
+  ]
+}
+```
+
+SLO compliance is also exported as a Prometheus metric:
+
+```
+sentinel_slo_compliance_pct{slo="prediction_jsd_drift",status="breached"} 23.8
+sentinel_slo_compliance_pct{slo="avg_confidence",status="breached"} 47.7
+```
+
+| SLO | Target | Why it matters |
+|---|---|---|
+| `inference_p99_latency_ms` | < 200 ms | User-facing inference latency budget |
+| `error_rate_pct` | < 1% | Inference reliability |
+| `avg_confidence` | > 0.65 | Model certainty — low confidence = OOD inputs |
+| `prediction_jsd_drift` | < 0.10 | Label distribution stability |
+| `active_critical_alerts` | 0 | No unacknowledged critical failures |
+
+---
+
+## Canary Rollout Safety Demo
+
+The most powerful use case: **catching a bad model deployment before it reaches 100% of traffic.**
+
+```bash
+python examples/canary_rollout_demo.py
+```
+
+Scenario:
+
+```
+model-v1  →  stable, healthy (90% traffic)
+model-v2  →  regression: feature weight misconfiguration (10% canary)
+
+Infrastructure signals:  HTTP 200 ✅  |  CPU normal ✅  |  Latency normal ✅
+SentinelAI signals:      JSD drift 0.38 🚨  |  Confidence collapsed 🚨  |  Alert fired 🚨
+```
+
+Demo phases:
+
+1. **Warm-up** — 400 requests to v1, establishes healthy reference window
+2. **Canary** — 90/10 traffic split introduced; v2 degradation is silent to infra
+3. **Detection** — SentinelAI triggers drift analysis, fires alerts, evaluates SLOs
+4. **Rollback** — traffic returned to 100% v1; metrics recover
+
+In a real Kubernetes canary workflow, step 4 maps to:
+
+```bash
+# Argo Rollouts
+kubectl argo rollouts abort classifier
+
+# Or plain kubectl
+kubectl set image deployment/classifier app=classifier:v1
+```
+
+---
+
 ## Roadmap
 
 - [ ] Slack / PagerDuty notification hooks

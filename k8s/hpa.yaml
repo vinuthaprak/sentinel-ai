@@ -1,0 +1,47 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sentinel-ai
+  namespace: sentinel-ai
+  labels:
+    app.kubernetes.io/name: sentinel-ai
+    app.kubernetes.io/component: server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sentinel-ai
+
+  minReplicas: 2   # Always keep 2 for HA
+  maxReplicas: 6   # Scale out under high prediction ingestion load
+
+  metrics:
+    # Scale on CPU: SentinelAI is CPU-bound during drift analysis (scipy stats)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # Scale on memory: each prediction window consumes memory proportional to throughput
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60    # Wait 60s before scaling up again
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300   # 5 min cooldown before scale-down (avoid flapping)
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

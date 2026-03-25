@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-ai
+  namespace: sentinel-ai
+  labels:
+    app.kubernetes.io/name: sentinel-ai
+    app.kubernetes.io/component: server
+    app.kubernetes.io/version: "0.1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sentinel-ai
+  # Zero-downtime rolling updates: never have 0 ready pods during rollout
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: sentinel-ai
+        app.kubernetes.io/name: sentinel-ai
+        app.kubernetes.io/component: server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8765"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Run as non-root (matches Dockerfile USER sentinel)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      # Graceful shutdown: wait for in-flight requests to drain
+      terminationGracePeriodSeconds: 30
+
+      containers:
+        - name: sentinel-ai
+          image: sentinel-ai:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8765
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+
+          # Resource requests/limits sized for a single-tenant observability sidecar.
+          # Tune these based on your prediction throughput.
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+          # Liveness: restart the container if the server hangs
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness: remove from Service load balancer until fully started
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+
+          # Startup probe: give extra time on cold start (model warming, etc.)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12   # 60s total budget before liveness kicks in
+
+      # Spread replicas across nodes for HA
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: sentinel-ai

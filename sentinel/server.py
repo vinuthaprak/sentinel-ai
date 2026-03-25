@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from .metrics_store import MetricsStore
 from .drift import DriftAnalysisEngine
 from .alerts import AlertManager
+from .slo import SLOEngine
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("sentinel.server")
@@ -41,7 +42,9 @@ logger = logging.getLogger("sentinel.server")
 
 store = MetricsStore(system_history=300, reference_size=1000, current_size=200)
 alert_manager = AlertManager(max_history=500)
+slo_engine = SLOEngine()
 _drift_engines: Dict[str, DriftAnalysisEngine] = {}
+_latest_drift_reports: Dict[str, dict] = {}
 _ws_connections: List[WebSocket] = []
 
 # ─────────────────────────────────────────────
@@ -75,6 +78,7 @@ async def drift_analysis_task():
                         timestamp=datetime.now(timezone.utc).isoformat(),
                     )
                     new_alerts = alert_manager.evaluate(report)
+                    _latest_drift_reports[model_name] = report.to_dict()
                     if new_alerts or report.overall_severity.value != "none":
                         logger.warning("Drift analysis: %s", report.summary)
                     # Push update to dashboard via WebSocket
@@ -374,6 +378,19 @@ async def prometheus_metrics():
     lines.append(f'sentinel_active_alerts{{severity="critical"}} {counts["critical"]}')
     lines.append(f'sentinel_active_alerts{{severity="warning"}} {counts["warning"]}')
 
+    # SLO compliance metrics
+    slo_results = slo_engine.evaluate(
+        store.get_all_model_summaries(), counts, _latest_drift_reports
+    )
+    lines += [
+        "# HELP sentinel_slo_compliance_pct SLO compliance percentage (100 = meeting target)",
+        "# TYPE sentinel_slo_compliance_pct gauge",
+    ]
+    for r in slo_results:
+        lines.append(
+            f'sentinel_slo_compliance_pct{{slo="{r.slo.name}",status="{r.status.value}"}} {r.compliance_pct}'
+        )
+
     return "\n".join(lines) + "\n"
 
 
@@ -420,6 +437,28 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         if websocket in _ws_connections:
             _ws_connections.remove(websocket)
+
+
+# ─────────────────────────────────────────────
+# SLO API
+# ─────────────────────────────────────────────
+
+@app.get("/api/slos", tags=["slos"])
+async def get_slos():
+    """
+    Returns current SLO compliance for all AI-specific and infra SLOs.
+
+    SLOs evaluated:
+      - inference_p99_latency_ms   : 99th-percentile latency < 200 ms
+      - error_rate_pct             : error rate < 1%
+      - avg_confidence             : average confidence > 0.65
+      - prediction_jsd_drift       : JSD drift < 0.10
+      - active_critical_alerts     : 0 critical alerts firing
+    """
+    model_summaries = store.get_all_model_summaries()
+    alert_counts = alert_manager.get_counts()
+    results = slo_engine.evaluate(model_summaries, alert_counts, _latest_drift_reports)
+    return slo_engine.summary(results)
 
 
 # ─────────────────────────────────────────────
