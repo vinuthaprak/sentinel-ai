@@ -82,13 +82,21 @@ flowchart TD
             States["FIRING → ACKNOWLEDGED\n→ RESOLVED"]
         end
 
+        subgraph SLOs["SLOEngine"]
+            SLOD["5 AI-specific SLOs\n━━━━━━━━━━━━━━━━━━\np99 latency · error rate\nconfidence · JSD drift\nactive critical alerts"]
+        end
+
         WS["/ws  WebSocket\nreal-time broadcast"]
         REST["/api/*  REST API"]
         MetricsEP["/metrics  Prometheus\ntext-format export"]
         Dash["/ Dashboard\nsingle-page HTML app"]
     end
 
-    subgraph Obs["📊 Observability Stack  (Docker Compose)"]
+    subgraph Infra["🚀 Deployment  (Kubernetes)"]
+        K8s["Deployment · Service · HPA\nreadiness · liveness · startup probes\nresource limits · rolling update"]
+    end
+
+    subgraph Obs["📊 Observability Stack  (Docker Compose / K8s)"]
         Prom["Prometheus :9090\nscrapes every 10s · 7d retention"]
         Grafana["Grafana :3000\ndashboards · alerting\n(admin / sentinel)"]
     end
@@ -98,20 +106,28 @@ flowchart TD
     RefWin <-->|"auto-rotate\nevery 200 samples"| CurWin
     Store -->|"per model · every 30s"| Drift
     KS & PSI & JSD & CUSUM & Chi2 -->|DriftReport| Alerts
+    KS & PSI & JSD & CUSUM & Chi2 -->|DriftReport| SLOs
     Rules --> Dedup --> States
+    Store -->|"model summaries"| SLOs
+    Alerts -->|"alert counts"| SLOs
     Alerts -->|"broadcast alert events"| WS
     Store -->|"broadcast prediction events"| WS
     WS -->|"live updates"| Dash
     REST -.->|"query"| Store
+    REST -.->|"/api/slos"| SLOs
+    SLOs -->|"slo_compliance_pct"| MetricsEP
     MetricsEP -.->|"scrape /metrics"| Prom
     Prom -->|"data source"| Grafana
+    K8s -->|"hosts"| Server
 
     style Client fill:#1e3a5f,stroke:#4a9eff,color:#e0f0ff
     style Server fill:#1a2e1a,stroke:#4aff7a,color:#e0ffe0
     style Obs fill:#3a1a2e,stroke:#ff4aaa,color:#ffe0f0
+    style Infra fill:#1a1a3a,stroke:#aa88ff,color:#eeddff
     style Store fill:#0d1f0d,stroke:#3aff5a,color:#ccffcc
     style Drift fill:#1a1a0d,stroke:#ffcc00,color:#ffffcc
     style Alerts fill:#1f0d0d,stroke:#ff6644,color:#ffddcc
+    style SLOs fill:#0d1a2a,stroke:#44aaff,color:#cce8ff
 ```
 
 ---
